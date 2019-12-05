@@ -5,7 +5,7 @@
   (first (common/parse-file icmp/parse "day_2.txt")))
 
 (defn part-1 []
-  (icmp/execute program 0))
+  (icmp/execute {:program program :counter 0}))
 
 
 (def ^:private inputs
@@ -25,5 +25,5 @@
 (defn part-2 []
   (->> inputs
        (map create-program)
-       (map #(icmp/execute % 0))
+       (map #(icmp/execute {:program % :counter 0}))
        (some (partial has-output "19690720"))))

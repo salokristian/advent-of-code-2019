@@ -4,6 +4,6 @@
 (def ^:private program
   (first (common/parse-file icmp/parse "day_5.txt")))
 
-(defn part-1 []
-  (icmp/execute program 0)
-  "DONE")
+(defn run []
+  (icmp/execute {:program program :counter 0})
+  nil)

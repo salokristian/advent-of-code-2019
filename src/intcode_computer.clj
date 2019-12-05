@@ -2,49 +2,69 @@
   (:require [clojure.edn :as edn]
             [clojure.string :as str]))
 
-(defn opcode->data [opcode]
+(defn instruction-data [opcode]
   (case opcode
-    1 {:op + :size 4 :output? true}
-    2 {:op * :size 4 :output? true}
-    3 {:op (constantly 1) :size 2 :output? true}
-    4 {:op println :size 2 :output? false}
-    99 {:op ::KILL :size 1 :output? false}))
+    1 {:size           4
+       :update-program (fn [{:keys [program params out]}]
+                         (assoc program out (str (+ (first params) (second params)))))}
+    2 {:size           4
+       :update-program (fn [{:keys [program params out]}]
+                         (assoc program out (str (* (first params) (second params)))))}
+    3 {:size           2
+       :update-program (fn [{:keys [program out]}]
+                         (assoc program out (read-line)))}
+    4 {:size           2
+       :update-program (fn [{:keys [params program]}]
+                         (println (first params))
+                         program)}
+    5 {:size           3
+       :update-counter (fn [{:keys [params counter size]}]
+                         (if (not (zero? (first params))) (second params) (+ counter size)))}
+    6 {:size           3
+       :update-counter (fn [{:keys [params counter size]}]
+                         (if (zero? (first params)) (second params) (+ counter size)))}
+    7 {:size           4
+       :update-program (fn [{:keys [program out params]}]
+                         (assoc program out (if (< (first params) (second params)) "1" "0")))}
+    8 {:size           4
+       :update-program (fn [{:keys [program out params]}]
+                         (assoc program out (if (= (first params) (second params)) "1" "0")))}
+    99 {:size 1}))
 
 (defn parse-param [program param param-mode]
   (case param-mode
-    0 (edn/read-string (get program (edn/read-string param)))
-    1 (edn/read-string param)))
+    0 (edn/read-string (get program param))
+    1 param))
 
-; regex
 (defn param-modes+opcode [val]
-  (let [opcode-idx (- (count val) 2)
-        [param-chars opcode-chars] (split-at opcode-idx val)
-        param-op-codes (->> param-chars reverse (map str) (map edn/read-string))]
-    (assoc
-      (opcode->data (->> opcode-chars (map str) (apply str) edn/read-string))
-      :param-modes (lazy-cat param-op-codes (repeat 0)))))
+  (let [[[_ param-modes opcode]] (re-seq #"(^\d*(?=\d{2})|^)(\d{1,2})" val)
+        param-modes (->> param-modes str/reverse (map (comp edn/read-string str)))]
+    {:opcode      (Integer/parseInt opcode)
+     :param-modes (lazy-cat param-modes (repeat 0))}))
 
 (defn parse-instruction [program program-counter]
-  (let [{:keys [op size output? param-modes]} (param-modes+opcode (get program program-counter))
-        params (subvec program (inc program-counter) (+ program-counter size))
-        param-data (map vector params param-modes)]
-    {:op   op
-     :size size
-     :in   (if output? (butlast param-data) param-data)
-     :out  (when output? [(last params) 1])}))
+  (let [{:keys [param-modes opcode]} (param-modes+opcode (get program program-counter))
+        {:keys [size]} (instruction-data opcode)
+        params (map edn/read-string (subvec program (inc program-counter) (+ program-counter size)))]
+    {:opcode     opcode
+     :size       size
+     :param-data (take (dec size) (map vector params param-modes))}))
 
-(defn execute-instruction [program {:keys [op in out]}]
-  (let [in' (map (partial apply parse-param program) in)
-        result (str (apply op in'))]
-    (if-not (nil? out)
-      (assoc program (apply parse-param program out) result)
-      program)))
+(defn execute-instruction
+  [{:keys [program counter] :as context} {:keys [opcode param-data size]}]
+  (let [params (map (partial apply parse-param program) param-data)
+        out (-> param-data last first)
+        {:keys [update-program update-counter]
+         :or   {update-program (constantly program)
+                update-counter (constantly (+ counter size))}} (instruction-data opcode)
+        f-params (merge context {:params params, :out out, :size size})]
+    {:program (update-program f-params)
+     :counter (update-counter f-params)}))
 
-(defn execute [program program-counter]
-  (let [{:keys [op size] :as instruction} (parse-instruction program program-counter)]
-    (if (not= op ::KILL)
-      (execute (execute-instruction program instruction)
-               (+ program-counter size))
+(defn execute [{:keys [program counter] :as context}]
+  (let [{:keys [opcode] :as instruction} (parse-instruction program counter)]
+    (if (not= opcode 99)
+      (execute (execute-instruction context instruction))
       program)))
 
 (defn parse [s]
