@@ -1,19 +1,12 @@
 (ns day-4)
 
-(defn digits [n]
-  (->> n
-       (iterate #(quot % 10))
-       (take-while pos?)
-       (mapv #(mod % 10))
-       rseq))
-
 (defn matching-digits? [count-comp digits]
   (->> digits
        (partition-by identity)
        (some #(count-comp 2 (count %)))))
 
 (defn valid-password? [matching-count-comp password]
-  (let [pw-digits (digits password)]
+  (let [pw-digits (common/digits password)]
     (and (apply <= pw-digits)
          (matching-digits? matching-count-comp pw-digits))))
 
