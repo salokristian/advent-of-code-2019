@@ -11,3 +11,6 @@
        (take-while pos?)
        (mapv #(mod % 10))
        rseq))
+
+(defn find-pred [pred x]
+  (some #(if (pred %) % nil) x))
