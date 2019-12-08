@@ -1,5 +1,6 @@
 (ns intcode-computer
-  (:require [clojure.edn :as edn]
+  (:require [clojure.core.async :refer [close! thread chan <!! >!!]]
+            [clojure.edn :as edn]
             [clojure.string :as str]))
 
 (defn instruction-data [opcode]
@@ -11,12 +12,11 @@
        :update-program (fn [{:keys [program params out]}]
                          (assoc program out (str (* (first params) (second params)))))}
     3 {:size           2
-       :update-program (fn [{:keys [program out]}]
-                         (assoc program out (read-line)))}
-    4 {:size           2
-       :update-program (fn [{:keys [params program]}]
-                         (println (first params))
-                         program)}
+       :update-program (fn [{:keys [program out input-chan]}]
+                         (assoc program out (str (<!! input-chan))))}
+    4 {:size         2
+       :send-outputs (fn [{:keys [params output-chan]}]
+                       (>!! output-chan (first params)))}
     5 {:size           3
        :update-counter (fn [{:keys [params counter size]}]
                          (if (not (zero? (first params))) (second params) (+ counter size)))}
@@ -51,21 +51,43 @@
      :param-data (take (dec size) (map vector params param-modes))}))
 
 (defn execute-instruction
-  [{:keys [program counter] :as context} {:keys [opcode param-data size]}]
+  [{:keys [program counter] :as context}
+   {:keys [opcode param-data size] :as instruction}]
   (let [params (map (partial apply parse-param program) param-data)
         out (-> param-data last first)
-        {:keys [update-program update-counter]
+        {:keys [update-program update-counter send-outputs]
          :or   {update-program (constantly program)
-                update-counter (constantly (+ counter size))}} (instruction-data opcode)
+                update-counter (constantly (+ counter size))
+                send-outputs   (constantly nil)}} (instruction-data opcode)
         f-params (merge context {:params params, :out out, :size size})]
-    {:program (update-program f-params)
-     :counter (update-counter f-params)}))
+    (send-outputs f-params)
+    (merge context {:program (update-program f-params)
+                    :counter (update-counter f-params)})))
 
-(defn execute [{:keys [program counter] :as context}]
+(defn halt [{:keys [program input-chan output-chan]}]
+  (close! input-chan)
+  (close! output-chan)
+  program)
+
+(defn execute
+  [{:keys [program counter]
+    :as   context}]
   (let [{:keys [opcode] :as instruction} (parse-instruction program counter)]
     (if (not= opcode 99)
       (execute (execute-instruction context instruction))
-      program)))
+      (halt context))))
+
+
+(defn run [{:keys [input-size output-size program]}]
+  (let [input-chan (chan input-size)
+        output-chan (chan output-size)
+        program-chan (thread (execute {:counter     0
+                                       :program     program
+                                       :input-chan  input-chan
+                                       :output-chan output-chan}))]
+    {:input-chan   input-chan
+     :output-chan  output-chan
+     :program-chan program-chan}))
 
 (defn parse [s]
   (str/split s #","))
