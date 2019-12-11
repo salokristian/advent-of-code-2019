@@ -1,4 +1,5 @@
 {:deps
  {org.clojure/core.async         {:mvn/version "0.6.532"}
   org.clojure/math.combinatorics {:mvn/version "0.1.6"}
+  org.clojure/math.numeric-tower {:mvn/version "0.0.4"}
   philoskim/debux                {:mvn/version "0.5.9"}}}
