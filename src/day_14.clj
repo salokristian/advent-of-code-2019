@@ -11,6 +11,7 @@
        (zipmap [:in :out])))
 
 (def reactions (common/parse-file parse-reaction "day_14.txt"))
+(def ore-supply 1000000000000)
 
 (defn find-reaction [reactions chemical]
   (letfn [(reactant [reaction]
@@ -35,6 +36,34 @@
         (recur requirements'))
       requirements)))
 
+(defn get-ore [fuel]
+  (get (get-requirements reactions
+                         {"FUEL" fuel})
+       "ORE"))
+
+(defn binary-search [f goal low high]
+  (loop [low low
+         high high
+         probes '()]
+    (if (< high low)
+      {:res    nil
+       :probes probes}
+      (let [mid (quot (+ low high) 2)
+            res (f mid)
+            latest-res' (conj probes {:probe mid :res res})]
+        (cond
+          (< res goal) (recur (inc mid) high latest-res')
+          (> res goal) (recur low (dec mid) probes)
+          :else {:res mid})))))
+
 (defn part-1 []
-  (get-requirements reactions
-                    {"FUEL" 1}))
+  (get-ore 1))
+
+(defn part-2 []
+  (let [{:keys [res probes]} (binary-search get-ore ore-supply 0 ore-supply)]
+    (or res
+        (->> probes
+             (sort-by :res)
+             (take-while #(< (:res %) ore-supply))
+             last
+             :probe))))
