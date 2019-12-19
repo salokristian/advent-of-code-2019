@@ -59,7 +59,7 @@
           visited
           cells))
 
-(defn dfs [start]
+(defn droid-dfs! [start]
   (loop [stack [start]
          path []
          visited {}]
@@ -72,25 +72,34 @@
                path'
                (assoc-visited visited (conj wall cur)))))))
 
-(def system-map (dfs {:x 0 :y 0 :type 1}))
+(def maze (droid-dfs! {:x 0 :y 0 :type 1}))
 
-(defn neighbors [system-map cell]
+(defn visitable-neighbors [maze {:keys [dist] :as cell}]
   (let [cell (select-keys cell [:x :y])]
     (->> possible-moves
          (map (partial merge-with + cell))
-         (map #(assoc % :type (get-in system-map [(:y %) (:x %)])))
+         (map #(assoc % :type (get-in maze [(:y %) (:x %)])
+                        :dist (inc dist)))
          (filter #(pos? (:type %))))))
 
-(defn graph-bfs
-  [graph v]
-  (loop [queue (conj PersistentQueue/EMPTY v)
+(defn maze-bfs
+  [{:keys [maze start-cell end?]}]
+  (loop [queue (conj PersistentQueue/EMPTY start-cell)
          visited #{}]
-    (let [{:keys [dist] :as v} (peek queue)
-          neighbors (neighbors graph v)
-          not-visited (->> neighbors
-                           (filter (complement visited))
-                           (map #(assoc % :dist (inc dist))))
+    (let [cell (peek queue)
+          neighbors (visitable-neighbors maze cell)
+          not-visited (filter #((complement visited) (select-keys % [:x :y])) neighbors)
           new-queue (apply conj (pop queue) not-visited)]
-      (if (= 2 (:type v))
-        (:dist v)
-        (recur new-queue (conj visited (select-keys v [:x :y :type])))))))
+      (if (end? {:queue new-queue :cell cell})
+        (:dist cell)
+        (recur new-queue (conj visited (select-keys cell [:x :y])))))))
+
+(defn part-1 []
+  (maze-bfs {:maze       maze
+             :start-cell {:x 0 :y 0 :dist 0}
+             :end?       #(= 2 (-> % :cell :type))}))
+
+(defn part-2 []
+  (maze-bfs {:maze       maze
+             :start-cell {:x -20 :y 14 :dist 0}
+             :end?       #(empty? (:queue %))}))
